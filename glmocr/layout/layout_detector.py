@@ -232,13 +232,10 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             raise RuntimeError("Layout detector not started. Call start() first.")
 
         num_images = len(images)
-        image_batch = []
-        for image in images:
-            image_width, image_height = image.size
-            image_array = np.array(image.convert("RGB"))
-            image_batch.append((image_array, image_width, image_height))
-
-        pil_images = [Image.fromarray(img[0]) for img in image_batch]
+        pil_images = [
+            img.convert("RGB") if img.mode != "RGB" else img
+            for img in images
+        ]
         all_paddle_format_results = []
 
         for chunk_start in range(0, num_images, self.batch_size):
@@ -326,8 +323,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
 
         all_results = []
         for img_idx, paddle_results in enumerate(all_paddle_format_results):
-            image_width = image_batch[img_idx][1]
-            image_height = image_batch[img_idx][2]
+            image_width, image_height = pil_images[img_idx].size
             results = []
             valid_index = 0
             for item in paddle_results:

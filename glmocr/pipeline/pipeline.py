@@ -15,6 +15,7 @@ Extension points:
 
 from __future__ import annotations
 
+import time
 import threading
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional
 
@@ -253,22 +254,17 @@ class Pipeline:
             region_count = tracker.unit_region_count[u]
             if region_count is None:
                 tracker._ready_queue.put(u)
+                time.sleep(0.05)
                 continue
 
-            results = state.snapshot_recognition_results()
             page_indices = tracker.unit_image_indices[u]
-            page_set = set(page_indices)
-            count = sum(1 for r in results if r["page_idx"] in page_set)
-            if count < region_count:
-                tracker._ready_queue.put(u)
-                continue
+            grouped = state.get_grouped_results(page_indices)
 
-            page_to_pos = {idx: k for k, idx in enumerate(page_indices)}
-            grouped: List[List[Dict]] = [[] for _ in page_indices]
-            for r in results:
-                pos = page_to_pos.get(r["page_idx"])
-                if pos is not None:
-                    grouped[pos].append(r["region"])
+            total = sum(len(g) for g in grouped)
+            if total < region_count:
+                tracker._ready_queue.put(u)
+                time.sleep(0.05)
+                continue
 
             json_u, md_u = self.result_formatter.process(grouped)
             yield PipelineResult(

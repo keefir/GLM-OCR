@@ -336,34 +336,28 @@ class PageLoader:
         if not str(prompt_text).strip():
             prompt_text = self.default_prompt
 
-        # Convert to RGB
-        if image.mode != "RGB":
-            image = image.convert("RGB")
+        encoded_image = load_image_to_base64(
+            image,
+            t_patch_size=self.t_patch_size,
+            max_pixels=self.max_pixels,
+            image_format=self.image_format,
+            patch_expand_factor=self.patch_expand_factor,
+            min_pixels=self.min_pixels,
+        )
 
-        # Encode image
-        buffered = BytesIO()
-        image.save(buffered, format=self.image_format)
-        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-        original_msg = {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/{self.image_format.lower()};base64,{img_base64}"
-                    },
+        content: list = [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/{self.image_format.lower()};base64,{encoded_image}"
                 },
-            ],
-        }
-
+            },
+        ]
         if prompt_text:
-            original_msg["content"].append({"type": "text", "text": prompt_text})
-
-        processed_msg = self._process_msg_standard(original_msg)
+            content.append({"type": "text", "text": prompt_text})
 
         return {
-            "messages": [processed_msg],
+            "messages": [{"role": "user", "content": content}],
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "top_p": self.top_p,

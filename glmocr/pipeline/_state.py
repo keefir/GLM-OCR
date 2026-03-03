@@ -44,6 +44,7 @@ class PipelineState:
 
         # ── Recognition results (stage 3 appends, main thread reads) ─
         self._recognition_results: List[Dict[str, Any]] = []
+        self._results_by_page: Dict[int, List[Dict]] = {}
         self._results_lock = threading.Lock()
 
         # ── UnitTracker (set before threads start) ───────────────────
@@ -75,14 +76,16 @@ class PipelineState:
         result = {"page_idx": page_idx, "region": region}
         with self._results_lock:
             self._recognition_results.append(result)
+            self._results_by_page.setdefault(page_idx, []).append(region)
         tracker = self._tracker
         if tracker is not None:
             tracker.on_region_done(page_idx)
 
-    def snapshot_recognition_results(self) -> List[Dict[str, Any]]:
-        """Return a shallow copy of all results accumulated so far."""
+    def get_grouped_results(self, page_indices: List[int]) -> List[List[Dict]]:
+        """Return recognition results grouped by page for the given indices.
+        """
         with self._results_lock:
-            return list(self._recognition_results)
+            return [list(self._results_by_page.get(pi, [])) for pi in page_indices]
 
     # ------------------------------------------------------------------
     # UnitTracker lifecycle

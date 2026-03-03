@@ -170,22 +170,22 @@ def layout_worker(
                         save_visualization, vis_output_dir, global_start_idx,
                     )
                     global_start_idx += len(batch_page_indices)
+                    for pi in batch_page_indices:
+                        state.images_dict.pop(pi, None)
                     batch_images, batch_page_indices, batch_unit_indices = [], [], []
 
             elif identifier == IDENTIFIER_UNIT_DONE:
                 unit_idx = msg["unit_idx"]
-                # Flush any remaining pages in the batch (they all belong to
-                # this unit since t1 sends UNIT_DONE after the last page).
                 if batch_images:
                     _flush_layout_batch(
                         state, layout_detector, batch_images, batch_page_indices,
                         save_visualization, vis_output_dir, global_start_idx,
                     )
                     global_start_idx += len(batch_page_indices)
+                    for pi in batch_page_indices:
+                        state.images_dict.pop(pi, None)
                     batch_images, batch_page_indices, batch_unit_indices = [], [], []
 
-                # All pages for this unit have been layout-detected; compute
-                # total region count and tell the tracker.
                 pages_for_unit = unit_page_indices.get(unit_idx, [])
                 region_count = sum(
                     len(state.layout_results_dict.get(pi, []))
@@ -261,7 +261,6 @@ def recognition_worker(
         concurrency = min(max_workers, 128)
         executor = ThreadPoolExecutor(max_workers=concurrency)
         futures: Dict[Any, Dict[str, Any]] = {}
-        pending_skip: List[Dict[str, Any]] = []
         processing_complete = False
 
         while True:
@@ -276,7 +275,6 @@ def recognition_worker(
                 msg = state.region_queue.get(timeout=0.01)
             except queue.Empty:
                 if processing_complete and not futures:
-                    _flush_pending_skips(pending_skip, state)
                     break
                 if futures:
                     _wait_for_any(futures)
@@ -286,11 +284,13 @@ def recognition_worker(
 
             if identifier == IDENTIFIER_REGION:
                 if msg["region"]["task_type"] == "skip":
-                    pending_skip.append(msg)
+                    msg["region"]["content"] = None
+                    state.add_recognition_result(msg["page_idx"], msg["region"])
                 else:
                     req = page_loader.build_request_from_image(
                         msg["cropped_image"], msg["region"]["task_type"],
                     )
+                    del msg["cropped_image"]
                     future = executor.submit(ocr_client.process, req)
                     futures[future] = msg
 
@@ -341,14 +341,6 @@ def _handle_future_result(
         region["content"] = ""
     state.add_recognition_result(page_idx, region)
 
-
-def _flush_pending_skips(
-    pending: List[Dict[str, Any]],
-    state: PipelineState,
-) -> None:
-    for msg in pending:
-        msg["region"]["content"] = None
-        state.add_recognition_result(msg["page_idx"], msg["region"])
 
 
 def _wait_for_any(futures: Dict) -> None:
