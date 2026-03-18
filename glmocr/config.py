@@ -210,7 +210,7 @@ class PipelineConfig(_BaseConfig):
 
     # Queue sizes for async pipeline.
     page_maxsize: int = 100
-    region_maxsize: Optional[int] = None
+    region_maxsize: Optional[int] = 800
 
 
 def _set_nested(data: Dict[str, Any], dotted_path: str, value: Any) -> None:
