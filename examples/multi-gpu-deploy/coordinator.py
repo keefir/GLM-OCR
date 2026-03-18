@@ -7,7 +7,6 @@ import sys
 import json
 import time
 import signal
-import tempfile
 import subprocess
 from pathlib import Path
 import concurrent.futures
@@ -60,7 +59,6 @@ class Coordinator:
         self.worker_procs: Dict[int, subprocess.Popen] = {}
         self.progress_files: Dict[int, str] = {}
         self.file_handles: List[Any] = []
-        self.tmp_dir = tempfile.mkdtemp(prefix="glmocr_mgpu_")
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_dir = Path("logs") / timestamp
@@ -380,14 +378,12 @@ class Coordinator:
             if self._shutdown:
                 break
 
-            filelist_path = os.path.join(
-                self.tmp_dir, f"shard_gpu{gpu_id}.json"
-            )
+            filelist_path = str(self.log_dir / f"shard_gpu{gpu_id}.json")
             with open(filelist_path, "w") as f:
                 json.dump(shard, f)
 
-            progress_path = os.path.join(
-                self.tmp_dir, f"progress_gpu{gpu_id}.json"
+            progress_path = str(
+                self.log_dir / f"progress_gpu{gpu_id}.json"
             )
             self.progress_files[gpu_id] = progress_path
 

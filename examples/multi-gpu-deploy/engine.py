@@ -116,6 +116,9 @@ def wait_for_service(
     import urllib.error
 
     url = f"http://127.0.0.1:{port}/v1/models"
+    # Bypass any HTTP proxy for localhost connections
+    no_proxy_handler = urllib.request.ProxyHandler({})
+    opener = urllib.request.build_opener(no_proxy_handler)
     start = time.time()
 
     while time.time() - start < timeout:
@@ -123,7 +126,7 @@ def wait_for_service(
             return False, int(time.time() - start)
         try:
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with opener.open(req, timeout=5) as resp:
                 if resp.status == 200:
                     return True, int(time.time() - start)
         except Exception:
