@@ -118,8 +118,12 @@ class Pipeline:
 
                 self.layout_detector = PPDocLayoutDetector(config.layout)
             self.max_workers = config.max_workers
-        self._page_maxsize = val if (val := getattr(config, "page_maxsize", 100)) is not None else 100
-        self._region_maxsize = val if (val := getattr(config, "region_maxsize", 800)) is not None else 800
+        self._page_maxsize = (
+            val if (val := getattr(config, "page_maxsize", 100)) is not None else 100
+        )
+        self._region_maxsize = (
+            val if (val := getattr(config, "region_maxsize", 800)) is not None else 800
+        )
 
     def _create_async_pipeline_state(
         self,
