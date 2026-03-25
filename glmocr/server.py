@@ -100,6 +100,10 @@ def create_app(config: "GlmOcrConfig") -> Flask:
         request_data = {"messages": messages}
 
         try:
+            # Get server config
+            doc_config = app.config["doc_config"]
+            server_config = doc_config.server
+
             # Pipeline.process() yields one result per input unit; merge for single response
             results = list(
                 pipeline.process(
@@ -108,6 +112,16 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                     layout_vis_output_dir=None,
                 )
             )
+
+            # Process results (save and update markdown with image links)
+            for r in results:
+                if server_config.save_results:
+                    r.save(server_config.output_dir)
+
+                # Always process markdown to include image links if images are available
+                # This ensures the user gets markdown with "imgs/..." links
+                r.markdown_result = r.process_markdown(server_config.output_dir)
+
             if not results:
                 return (
                     jsonify({"json_result": None, "markdown_result": ""}),
