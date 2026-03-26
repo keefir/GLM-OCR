@@ -114,10 +114,10 @@ pipeline:
   # Page loader: handles image/PDF loading and API request building
   page_loader:
     # Generation parameters
-    max_tokens: 4096
-    temperature: 0.8
-    top_p: 0.9
-    top_k: 50
+    max_tokens: 8192
+    temperature: 0.0
+    top_p: 0.00001
+    top_k: 1
     repetition_penalty: 1.1
 
     # Image processing
@@ -127,12 +127,6 @@ pipeline:
     image_format: JPEG # JPEG, PNG, WEBP
     min_pixels: 12544 # 112 * 112
     max_pixels: 71372800 # 14 * 14 * 4 * 1280
-
-    # Default prompt for OCR (used when no custom prompt provided)
-    default_prompt: >
-      Recognize the text in the image and output in Markdown format.
-      Preserve the original layout (headings/paragraphs/tables/formulas).
-      Do not fabricate content that does not exist in the image.
 
     # Task-specific prompts
     task_prompt_mapping:
@@ -183,7 +177,7 @@ pipeline:
     # PP-DocLayoutV3 model directory
     # Can be a local folder or a Hugging Face model id
     # (Use *_safetensors for Transformers; PaddlePaddle/PP-DocLayoutV3 is a PaddleOCR export)
-    model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
+    model_dir: /workspace/ocr_document_data_cloud/ckpt/opensource/PP-DocLayoutV3_safetensors
 
     # Detection threshold
     threshold: 0.3
@@ -197,7 +191,7 @@ pipeline:
     # batch_size: max images per model forward pass (reduce to 1 if OOM)
     batch_size: 1
     workers: 1
-    cuda_visible_devices: "0"
+    cuda_visible_devices: "5"
     # img_size: null                # resize input (optional)
 
     # Use polygon masks for region cropping and visualization.

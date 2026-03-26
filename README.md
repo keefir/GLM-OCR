@@ -245,13 +245,13 @@ pipeline:
     api_host: localhost
     api_port: 8080
     api_key: null # or set API_KEY env var
-    connect_timeout: 300
-    request_timeout: 300
+    connect_timeout: 30
+    request_timeout: 120
 
   # Page loader settings
   page_loader:
-    max_tokens: 16384
-    temperature: 0.01
+    max_tokens: 8192
+    temperature: 0.0
     image_format: JPEG
     min_pixels: 12544
     max_pixels: 71372800

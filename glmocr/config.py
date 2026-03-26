@@ -74,10 +74,9 @@ class OCRApiConfig(_BaseConfig):
     api_scheme: Optional[str] = None
     api_path: str = "/v1/chat/completions"
     api_url: Optional[str] = None
-    model: Optional[str] = None  # Optional model name (required by Ollama/MLX)
     api_key: Optional[str] = None
 
-    # Model name included in API requests.
+    # Model name included in API requests (required by Ollama/MLX).
     model: Optional[str] = None
     headers: Dict[str, str] = Field(default_factory=dict)
     verify_ssl: bool = False
@@ -86,8 +85,8 @@ class OCRApiConfig(_BaseConfig):
     # Use "ollama_generate" for Ollama's native /api/generate endpoint
     api_mode: str = "openai"
 
-    connect_timeout: int = 300
-    request_timeout: int = 300
+    connect_timeout: int = 30
+    request_timeout: int = 120
 
     # Retry behavior (for transient upstream failures like 429/5xx)
     retry_max_attempts: int = 2  # total attempts = 1 + retry_max_attempts
@@ -143,8 +142,8 @@ class MaaSApiConfig(_BaseConfig):
 
 
 class PageLoaderConfig(_BaseConfig):
-    max_tokens: int = 16384
-    temperature: float = 0.01
+    max_tokens: int = 8192
+    temperature: float = 0.0
     top_p: float = 0.00001
     top_k: int = 1
     repetition_penalty: float = 1.1
@@ -156,11 +155,6 @@ class PageLoaderConfig(_BaseConfig):
     min_pixels: int = 112 * 112
     max_pixels: int = 14 * 14 * 4 * 1280
 
-    default_prompt: str = (
-        "Recognize the text in the image and output in Markdown format. "
-        "Preserve the original layout (headings/paragraphs/tables/formulas). "
-        "Do not fabricate content that does not exist in the image."
-    )
     task_prompt_mapping: Optional[Dict[str, str]] = None
 
     pdf_dpi: int = 200
@@ -180,7 +174,7 @@ class ResultFormatterConfig(_BaseConfig):
 
 class LayoutConfig(_BaseConfig):
     model_dir: Optional[str] = None
-    threshold: float = 0.4
+    threshold: float = 0.3
     threshold_by_class: Optional[Dict[Union[int, str], float]] = None
     batch_size: int = 8
     workers: int = 1

@@ -276,10 +276,6 @@ class OCRClient:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        # Inject model if configured
-        if self.model and "model" not in request_data:
-            request_data["model"] = self.model
-
         total_attempts = int(self.retry_max_attempts) + 1
         last_error: Optional[str] = None
 

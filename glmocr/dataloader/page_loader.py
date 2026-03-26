@@ -82,9 +82,6 @@ class PageLoader:
         # Task prompt mapping
         self.task_prompt_mapping = config.task_prompt_mapping
 
-        # Default OCR instruction (used when user provides images without text)
-        self.default_prompt = config.default_prompt
-
         # PDF-to-image parameters
         self.pdf_dpi = config.pdf_dpi
         self.pdf_max_pages = config.pdf_max_pages
@@ -329,24 +326,6 @@ class PageLoader:
             if msg["role"] in ("system", "assistant", "tool"):
                 processed_messages.append(msg)
             elif msg["role"] in ("user", "observation"):
-                # If user provides images but no text, inject the default OCR instruction
-                if isinstance(msg.get("content"), list):
-                    has_image = any(
-                        c.get("type") == "image_url" for c in msg["content"]
-                    )
-                    has_text = any(
-                        c.get("type") == "text" and str(c.get("text", "")).strip()
-                        for c in msg["content"]
-                    )
-                    if has_image and not has_text:
-                        msg = {
-                            **msg,
-                            "content": [
-                                *msg["content"],
-                                {"type": "text", "text": self.default_prompt},
-                            ],
-                        }
-
                 processed_messages.append(self._process_msg_standard(msg))
             else:
                 raise ValueError(f"{msg['role']} is not a valid role for a message.")
@@ -369,8 +348,6 @@ class PageLoader:
         prompt_text = ""
         if self.task_prompt_mapping:
             prompt_text = self.task_prompt_mapping.get(task_type, "")
-        if not str(prompt_text).strip():
-            prompt_text = self.default_prompt
 
         encoded_image = load_image_to_base64(
             image,
