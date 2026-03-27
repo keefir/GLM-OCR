@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Union
 
 from glmocr.utils.logging import get_logger
-from glmocr.utils.markdown_utils import crop_and_replace_images
+from glmocr.utils.markdown_utils import crop_and_embed_images_base64
 
 logger = get_logger(__name__)
 
@@ -59,7 +59,7 @@ class BaseParserResult(ABC):
         """Save result to disk. Subclasses implement layout vis etc."""
         pass
 
-    def process_markdown(self, output_dir: Union[str, Path]) -> str:
+    def process_markdown(self) -> str:
         """Process Markdown by cropping image regions and replacing tags.
 
         Returns the updated Markdown text.
@@ -70,20 +70,9 @@ class BaseParserResult(ABC):
         md_text = self.markdown_result
         if self.original_images:
             try:
-                output_dir = Path(output_dir).absolute()
-                if self.original_images:
-                    image_path = Path(self.original_images[0])
-                    base_name = self._sanitize_name(image_path.stem)
-                    output_path = output_dir / base_name
-                else:
-                    output_path = output_dir / "result"
-
-                imgs_dir = output_path / "imgs"
-                md_text, _ = crop_and_replace_images(
+                md_text = crop_and_embed_images_base64(
                     md_text,
                     self.original_images,
-                    imgs_dir,
-                    image_prefix="cropped",
                 )
             except Exception as e:
                 logger.warning("Failed to process image regions: %s", e)
@@ -126,7 +115,7 @@ class BaseParserResult(ABC):
 
         # Markdown (with image crop/replace if original_images)
         if self.markdown_result and self.markdown_result.strip():
-            md_text = self.process_markdown(output_dir)
+            md_text = self.process_markdown()
             md_file = output_path / f"{base_name}.md"
             with open(md_file, "w", encoding="utf-8") as f:
                 f.write(md_text)

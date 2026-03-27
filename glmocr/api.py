@@ -307,7 +307,7 @@ class GlmOcr:
     # The MaaS API returns bbox_2d in **absolute pixel coordinates** of
     # its own internal rendering (e.g. 2040×2640 for a letter-sized PDF
     # page).  The rest of the SDK (self-hosted pipeline, crop_image_region,
-    # crop_and_replace_images) uses **normalised 0-1000 coordinates**.
+    # crop_and_embed_images_base64) uses **normalised 0-1000 coordinates**.
     #
     # To keep everything consistent we convert here, right after receiving
     # the MaaS response, so that json_result and markdown_result always
@@ -340,7 +340,7 @@ class GlmOcr:
         pages_info: List[Dict[str, int]],
     ) -> str:
         """Replace absolute-pixel bbox values in Markdown image refs with
-        normalised 0-1000 values so that ``crop_and_replace_images`` crops
+        normalised 0-1000 values so that ``crop_and_embed_images_base64`` crops
         from the correct region.
         """
         if not pages_info or not markdown:

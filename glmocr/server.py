@@ -113,14 +113,11 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                 )
             )
 
-            # Process results (save and update markdown with image links)
+            # Process results (update markdown with image base64)
             for r in results:
-                if server_config.save_results:
-                    r.save(server_config.output_dir)
-
-                # Always process markdown to include image links if images are available
-                # This ensures the user gets markdown with "imgs/..." links
-                r.markdown_result = r.process_markdown(server_config.output_dir)
+                # Always process markdown to include image base64 if images are available
+                # This ensures the user gets markdown with base64 embedded images
+                r.markdown_result = r.process_markdown()
 
             if not results:
                 return (

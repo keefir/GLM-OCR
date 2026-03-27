@@ -1,7 +1,9 @@
 """Markdown processing utilities."""
 
-import re
 import ast
+import base64
+import io
+import re
 from pathlib import Path
 from typing import List, Tuple
 
@@ -47,32 +49,25 @@ def extract_image_refs(markdown_text: str) -> List[Tuple[int, List[int], str]]:
     return image_refs
 
 
-def crop_and_replace_images(
+def crop_and_embed_images_base64(
     markdown_text: str,
     original_images: List[str],
-    output_dir: Path,
-    image_prefix: str = "image",
-) -> Tuple[str, List[str]]:
-    """Crop referenced image regions and replace Markdown tags.
+) -> str:
+    """Crop referenced image regions and embed them as base64 in Markdown tags.
 
     Args:
         markdown_text: Source Markdown.
         original_images: Original image paths.
-        output_dir: Output directory.
-        image_prefix: Filename prefix for cropped images.
 
     Returns:
-        (updated_markdown, saved_image_paths)
+        updated_markdown
     """
-    # Ensure output directory exists
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     # Extract image references
     image_refs = extract_image_refs(markdown_text)
 
     if not image_refs:
         # No image references
-        return markdown_text, []
+        return markdown_text
 
     # Load originals (supports PDFs)
     loaded_images = []
@@ -102,7 +97,6 @@ def crop_and_replace_images(
 
     # Process each reference
     result_markdown = markdown_text
-    saved_image_paths = []
 
     for idx, (page_idx, bbox, original_tag) in enumerate(image_refs):
         # Validate page index
@@ -119,17 +113,12 @@ def crop_and_replace_images(
         try:
             cropped_image = crop_image_region(original_image, bbox)
 
-            # Output filename format: image_page0_idx0.jpg
-            image_filename = f"{image_prefix}_page{page_idx}_idx{idx}.jpg"
-            image_path = output_dir / image_filename
+            buffer = io.BytesIO()
+            cropped_image.save(buffer, format="JPEG", quality=95)
+            b64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-            # Save cropped image
-            cropped_image.save(image_path, quality=95)
-            saved_image_paths.append(str(image_path))
-
-            # Replace Markdown image tag with a relative path (imgs/filename)
-            relative_path = f"imgs/{image_filename}"
-            new_tag = f"![Image {page_idx}-{idx}]({relative_path})"
+            # Replace Markdown image tag with a base64 data URI
+            new_tag = f"![Image {page_idx}-{idx}](data:image/jpeg;base64,{b64_str})"
             result_markdown = result_markdown.replace(original_tag, new_tag, 1)
 
         except Exception as e:
@@ -139,4 +128,4 @@ def crop_and_replace_images(
             # Keep original tag on failure
             continue
 
-    return result_markdown, saved_image_paths
+    return result_markdown

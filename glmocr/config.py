@@ -50,9 +50,6 @@ _ENV_MAP: Dict[str, str] = {
     "LAYOUT_CUDA_VISIBLE_DEVICES": "pipeline.layout.cuda_visible_devices",
     # Logging
     "LOG_LEVEL": "logging.level",
-    # Server
-    "SERVER_SAVE_RESULTS": "server.save_results",
-    "SERVER_OUTPUT_DIR": "server.output_dir",
 }
 
 
@@ -64,8 +61,6 @@ class ServerConfig(_BaseConfig):
     host: str = "0.0.0.0"
     port: int = 5002
     debug: bool = False
-    output_dir: str = "/home/dva/projects/glm-server/outputs"
-    save_results: bool = True
 
 
 class LoggingConfig(_BaseConfig):
@@ -388,9 +383,6 @@ class GlmOcrConfig(_BaseConfig):
             "ocr_api_port": "pipeline.ocr_api.api_port",
             # Layout GPU binding
             "cuda_visible_devices": "pipeline.layout.cuda_visible_devices",
-            # Server save settings
-            "server_save_results": "server.save_results",
-            "server_output_dir": "server.output_dir",
         }
         for kw, dotted in _KW_MAP.items():
             if kw in overrides and overrides[kw] is not None:
