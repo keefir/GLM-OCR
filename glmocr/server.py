@@ -7,6 +7,7 @@ import multiprocessing
 from typing import TYPE_CHECKING
 
 try:
+    import waitress
     from flask import Flask, request, jsonify
 
     _FLASK_IMPORT_ERROR = None
@@ -29,7 +30,7 @@ os.environ["http_proxy"] = ""
 os.environ["https_proxy"] = ""
 
 
-def create_app(config: "GlmOcrConfig") -> Flask:
+def create_app(config: "GlmOcrConfig" = None) -> Flask:
     """Create a Flask app.
 
     Args:
@@ -208,12 +209,17 @@ def main():
         logger.info("=" * 60)
         logger.info("")
 
-        app.run(
-            debug=server_config.debug,
+        # app.run(
+        #     debug=server_config.debug,
+        #     host=server_config.host,
+        #     port=server_config.port,
+        # )
+        waitress.serve(
+            app,
+            # debug=server_config.debug,
             host=server_config.host,
             port=server_config.port,
         )
-
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     except Exception as e:
