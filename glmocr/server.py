@@ -62,6 +62,7 @@ def create_app(config: "GlmOcrConfig" = None) -> Flask:
             {
                 "images": ["url1", "url2", ...],  # image URLs (http/https/file/data)
             }
+            or multipart/form-data with "images" (or "file") fields containing the files.
 
         Response:
             {
@@ -69,38 +70,58 @@ def create_app(config: "GlmOcrConfig" = None) -> Flask:
                 "markdown_result": "..."
             }
         """
-        # Validate Content-Type
-        if request.headers.get("Content-Type") != "application/json":
+        import tempfile
+        import os
+
+        content_type = request.headers.get("Content-Type", "")
+        is_json = content_type.startswith("application/json")
+        is_multipart = content_type.startswith("multipart/form-data")
+
+        if not (is_json or is_multipart):
             return (
                 jsonify(
-                    {"error": "Invalid Content-Type. Expected 'application/json'."}
+                    {"error": "Invalid Content-Type. Expected 'application/json' or 'multipart/form-data'."}
                 ),
                 400,
             )
 
-        # Parse JSON payload
-        try:
-            data = request.json
-        except Exception:
-            return jsonify({"error": "Invalid JSON payload"}), 400
-
-        images = data.get("images", [])
-        if isinstance(images, str):
-            images = [images]
-
-        if not images:
-            return jsonify({"error": "No images provided"}), 400
-
-        # Build pipeline request
-        messages = [{"role": "user", "content": []}]
-        for image_url in images:
-            messages[0]["content"].append(
-                {"type": "image_url", "image_url": {"url": image_url}}
-            )
-
-        request_data = {"messages": messages}
+        images = []
+        temp_dir = None
 
         try:
+            if is_json:
+                try:
+                    data = request.json
+                except Exception:
+                    return jsonify({"error": "Invalid JSON payload"}), 400
+
+                images = data.get("images", [])
+                if isinstance(images, str):
+                    images = [images]
+            else:
+                uploaded_files = request.files.getlist("images") or request.files.getlist("file") or request.files.getlist("image")
+                logger.info(f"Got uploaded files: {request.files}")
+                if uploaded_files:
+                    temp_dir = tempfile.TemporaryDirectory()
+                    for idx, file in enumerate(uploaded_files):
+                        if file.filename:
+                            ext = os.path.splitext(file.filename)[1]
+                            temp_path = os.path.join(temp_dir.name, f"upload_{idx}{ext}")
+                            file.save(temp_path)
+                            images.append(temp_path)
+
+            if not images:
+                return jsonify({"error": "No images provided"}), 400
+
+            # Build pipeline request
+            messages = [{"role": "user", "content": []}]
+            for image_url in images:
+                messages[0]["content"].append(
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                )
+
+            request_data = {"messages": messages}
+
             # Get server config
             doc_config = app.config["doc_config"]
             server_config = doc_config.server
@@ -155,6 +176,9 @@ def create_app(config: "GlmOcrConfig" = None) -> Flask:
             logger.error("Parse error: %s", e)
             logger.debug(traceback.format_exc())
             return jsonify({"error": f"Parse error: {str(e)}"}), 500
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
 
     @app.route("/health", methods=["GET"])
     def health():
