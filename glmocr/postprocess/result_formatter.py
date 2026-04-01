@@ -211,6 +211,7 @@ class ResultFormatter(BasePostProcessor):
 
         with profiler.measure("serialize_json"):
             json_str = json.dumps(json_final_results, ensure_ascii=False)
+        print("Finished serializing")
         markdown_str = "\n\n".join(markdown_final_results)
 
         return json_str, markdown_str

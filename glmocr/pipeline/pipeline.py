@@ -314,7 +314,7 @@ class Pipeline:
                 for page, unit_idx in self.page_loader.iter_pages_with_unit_indices(
                     image_urls
                 ):
-                    state.images_dict[img_idx] = page
+                    # state.images_dict[img_idx] = page
                     state.page_queue.put(("image", img_idx, page))
                     unit_indices_list.append(unit_idx)
                     img_idx += 1

@@ -133,3 +133,6 @@ pipeline:
       23: vertical_text
       24: vision_footnote
   
+  result_formatter:
+    output_format: markdown
+  
