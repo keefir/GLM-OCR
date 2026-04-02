@@ -200,9 +200,6 @@ class Pipeline:
                     layout_vis_dir=layout_vis_output_dir,
                 )
                 return
-            pages, unit_indices = self.page_loader.load_pages_with_unit_indices(
-                image_urls
-            )
             from copy import deepcopy
 
             base_request_data = deepcopy(request_data)
@@ -222,47 +219,49 @@ class Pipeline:
                 (url[7:] if url.startswith("file://") else url) for url in image_urls
             ]
             unit_contents: Dict[int, List[str]] = {u: [] for u in range(num_units)}
-            for page_idx, page in enumerate(pages):
-                u = (
-                    (unit_indices or [0])[page_idx]
-                    if page_idx < len(unit_indices or [])
-                    else 0
-                )
-                img_b64 = load_image_to_base64(
-                    page,
-                    t_patch_size=self.page_loader.t_patch_size,
-                    max_pixels=self.page_loader.max_pixels,
-                    image_format=self.page_loader.image_format,
-                    patch_expand_factor=self.page_loader.patch_expand_factor,
-                    min_pixels=self.page_loader.min_pixels,
-                )
-                data_url = f"data:image/{self.page_loader.image_format.lower()};base64,{img_b64}"
-                per_request = deepcopy(base_request_data)
-                user_msg = None
-                for m in per_request.get("messages", []):
-                    if m.get("role") == "user" and isinstance(m.get("content"), list):
-                        user_msg = m
-                        break
-                if user_msg is None:
-                    per_request.setdefault("messages", []).append(
-                        {"role": "user", "content": []}
+            for page_idx, (page, u) in enumerate(self.page_loader.iter_pages_with_unit_indices(image_urls)):
+                try:
+                    img_b64 = load_image_to_base64(
+                        page,
+                        t_patch_size=self.page_loader.t_patch_size,
+                        max_pixels=self.page_loader.max_pixels,
+                        image_format=self.page_loader.image_format,
+                        patch_expand_factor=self.page_loader.patch_expand_factor,
+                        min_pixels=self.page_loader.min_pixels,
                     )
-                    user_msg = per_request["messages"][-1]
-                user_msg["content"].append(
-                    {"type": "image_url", "image_url": {"url": data_url}}
-                )
-                per_request = self.page_loader.build_request(per_request)
-                response, status_code = self.ocr_client.process(per_request)
-                if status_code != 200:
-                    raise Exception(
-                        f"OCR request failed: {response}, status_code: {status_code}"
+                    data_url = f"data:image/{self.page_loader.image_format.lower()};base64,{img_b64}"
+                    per_request = deepcopy(base_request_data)
+                    user_msg = None
+                    for m in per_request.get("messages", []):
+                        if m.get("role") == "user" and isinstance(m.get("content"), list):
+                            user_msg = m
+                            break
+                    if user_msg is None:
+                        per_request.setdefault("messages", []).append(
+                            {"role": "user", "content": []}
+                        )
+                        user_msg = per_request["messages"][-1]
+                    user_msg["content"].append(
+                        {"type": "image_url", "image_url": {"url": data_url}}
                     )
-                content = (
-                    response.get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content", "")
-                )
-                unit_contents.setdefault(u, []).append(content)
+                    per_request = self.page_loader.build_request(per_request)
+                    response, status_code = self.ocr_client.process(per_request)
+                    if status_code != 200:
+                        raise Exception(
+                            f"OCR request failed: {response}, status_code: {status_code}"
+                        )
+                    content = (
+                        response.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                    )
+                    unit_contents.setdefault(u, []).append(content)
+                finally:
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
+            
             for u in range(num_units):
                 contents_u = unit_contents.get(u, [])
                 if len(contents_u) == 1:
@@ -368,6 +367,11 @@ class Pipeline:
                                 layout_vis_output_dir,
                                 global_start_idx,
                             )
+                            for img in batch_images:
+                                try:
+                                    img.close()
+                                except Exception:
+                                    pass
                             global_start_idx += len(batch_indices)
                             batch_images = []
                             batch_indices = []
@@ -384,6 +388,11 @@ class Pipeline:
                                 layout_vis_output_dir,
                                 global_start_idx,
                             )
+                            for img in batch_images:
+                                try:
+                                    img.close()
+                                except Exception:
+                                    pass
                         state.region_queue.put(("done", None, None))
                         break
                     elif item_type == "error":
@@ -482,12 +491,20 @@ class Pipeline:
                         cropped_image, region, task_type, page_idx = data
                         if task_type == "skip":
                             pending_skip.append((region, task_type, page_idx))
+                            try:
+                                cropped_image.close()
+                            except Exception:
+                                pass
                         else:
                             req = self.page_loader.build_request_from_image(
                                 cropped_image, task_type
                             )
                             future = executor.submit(self.ocr_client.process, req)
                             futures[future] = (region, task_type, page_idx)
+                            try:
+                                cropped_image.close()
+                            except Exception:
+                                pass
                     elif item_type == "done":
                         processing_complete = True
                     elif item_type == "error":

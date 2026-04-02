@@ -10,6 +10,7 @@ pipeline:
     api_path: /v1/chat/completions
     model: GLM-OCR-Q8_0.gguf    # Required: specify model name
     api_mode: openai  # Required: use Ollama native format
+    request_timeout: 1800  # 30 minutes - increase for large PDF files
   
   enable_layout: true
   # Layout detection settings (used when enable_layout=true)

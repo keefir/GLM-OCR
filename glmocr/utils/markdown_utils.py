@@ -69,63 +69,82 @@ def crop_and_embed_images_base64(
         # No image references
         return markdown_text
 
-    # Load originals (supports PDFs)
-    loaded_images = []
-    for img_path in original_images:
-        path = Path(img_path)
-        suffix = path.suffix.lower()
+    required_pages = {page_idx for page_idx, _, _ in image_refs}
 
-        if suffix == ".pdf":
-            # PDF: convert to images (pypdfium2 only)
-            if not PYPDFIUM2_AVAILABLE:
-                raise RuntimeError(
-                    "PDF support requires pypdfium2. Install: pip install pypdfium2"
+    # Load originals (supports PDFs) - load ONLY required pages
+    loaded_images = {}
+    try:
+        for img_path in original_images:
+            path = Path(img_path)
+            suffix = path.suffix.lower()
+
+            if suffix == ".pdf":
+                # PDF: convert to images (pypdfium2 only)
+                if not PYPDFIUM2_AVAILABLE:
+                    raise RuntimeError(
+                        "PDF support requires pypdfium2. Install: pip install pypdfium2"
+                    )
+                try:
+                    import pypdfium2 as pdfium
+                    from glmocr.utils.image_utils import _page_to_image
+                    pdf = pdfium.PdfDocument(img_path)
+                    for req_page in required_pages:
+                        if 0 <= req_page < len(pdf):
+                            page = pdf[req_page]
+                            try:
+                                image, _ = _page_to_image(page, dpi=200, max_width_or_height=3500)
+                                loaded_images[req_page] = image
+                            finally:
+                                page.close()
+                    pdf.close()
+                except Exception as e:
+                    logger.warning(f"Failed to convert required PDF pages: {e}")
+            else:
+                # Normal image file
+                with Image.open(img_path) as img:
+                    if img.mode != "RGB":
+                        img = img.convert("RGB")
+                    loaded_images[0] = img.copy()
+
+        # Process each reference
+        result_markdown = markdown_text
+
+        for idx, (page_idx, bbox, original_tag) in enumerate(image_refs):
+            # Validate page index
+            if page_idx not in loaded_images:
+                logger.warning(
+                    "page_idx %d out of range or not loaded, skipping",
+                    page_idx,
                 )
+                continue
+
+            # Crop from original
+            original_image = loaded_images[page_idx]
+            cropped_image = None
             try:
-                pdf_images = pdf_to_images_pil(
-                    img_path, dpi=200, max_width_or_height=3500
-                )
-                loaded_images.extend(pdf_images)
+                cropped_image = crop_image_region(original_image, bbox)
+
+                buffer = io.BytesIO()
+                cropped_image.save(buffer, format="JPEG", quality=95)
+                b64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+                # Replace Markdown image tag with a base64 data URI
+                new_tag = f"![Image {page_idx}-{idx}](data:image/jpeg;base64,{b64_str})"
+                result_markdown = result_markdown.replace(original_tag, new_tag, 1)
+
             except Exception as e:
-                raise RuntimeError(f"Failed to convert PDF to images: {e}") from e
-        else:
-            # Normal image file
-            img = Image.open(img_path)
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-            loaded_images.append(img)
-
-    # Process each reference
-    result_markdown = markdown_text
-
-    for idx, (page_idx, bbox, original_tag) in enumerate(image_refs):
-        # Validate page index
-        if page_idx < 0 or page_idx >= len(loaded_images):
-            logger.warning(
-                "page_idx %d out of range (total %d images), skipping",
-                page_idx,
-                len(loaded_images),
-            )
-            continue
-
-        # Crop from original
-        original_image = loaded_images[page_idx]
-        try:
-            cropped_image = crop_image_region(original_image, bbox)
-
-            buffer = io.BytesIO()
-            cropped_image.save(buffer, format="JPEG", quality=95)
-            b64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-            # Replace Markdown image tag with a base64 data URI
-            new_tag = f"![Image {page_idx}-{idx}](data:image/jpeg;base64,{b64_str})"
-            result_markdown = result_markdown.replace(original_tag, new_tag, 1)
-
-        except Exception as e:
-            logger.warning(
-                "Failed to crop image (page=%d, bbox=%s): %s", page_idx, bbox, e
-            )
-            # Keep original tag on failure
-            continue
+                logger.warning("Failed to crop and embed image %d: %s", idx, e)
+            finally:
+                if cropped_image is not None:
+                    try:
+                        cropped_image.close()
+                    except Exception:
+                        pass
+    finally:
+        for img in loaded_images.values():
+            try:
+                img.close()
+            except Exception:
+                pass
 
     return result_markdown

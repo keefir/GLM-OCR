@@ -301,7 +301,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             )
             all_paddle_format_results.extend(paddle_format_results)
 
-            if self._device.startswith("cuda") and chunk_end < num_images:
+            if self._device.startswith("cuda"):
                 del inputs, outputs, raw_results
                 torch.cuda.empty_cache()
 
