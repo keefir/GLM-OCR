@@ -108,7 +108,7 @@ pipeline:
   # Lower values to reduce 503 errors on busy OCR servers
   max_workers: 32
   # Queue sizes
-  page_maxsize: 10
+  page_maxsize: 100
   region_maxsize: 800
 
   # Page loader: handles image/PDF loading and API request building
