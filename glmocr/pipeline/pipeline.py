@@ -577,6 +577,8 @@ class Pipeline:
             )
             for u in range(num_units)
         ]
+        # Free layout results — no longer needed after counting
+        state.layout_results_dict.clear()
         unit_for_image: Dict[int, int] = {
             i: u for u in range(num_units) for i in unit_image_indices[u]
         }
@@ -616,6 +618,7 @@ class Pipeline:
                 if i in img_to_idx:
                     grouped_u[img_to_idx[i]].append(r)
             json_u, md_u = self.result_formatter.process(grouped_u)
+            del grouped_u
             yield PipelineResult(
                 json_result=json_u,
                 markdown_result=md_u,
@@ -624,6 +627,13 @@ class Pipeline:
                 layout_image_indices=unit_image_indices[u],
             )
             emitted.add(u)
+            # Free consumed recognition results to avoid unbounded growth
+            consumed_indices = set(unit_image_indices[u])
+            with state.results_lock:
+                state.recognition_results[:] = [
+                    (i, r) for (i, r) in state.recognition_results
+                    if i not in consumed_indices
+                ]
 
         t3.join()
         with state.exception_lock:

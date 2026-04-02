@@ -112,68 +112,85 @@ def load_image_to_base64(
         except Exception:
             return None
 
-    # Handle different input types
-    if isinstance(image_source, Image.Image):
-        # Already a PIL Image
-        image = image_source
-    elif isinstance(image_source, bytes):
-        # Raw bytes
-        image = Image.open(io.BytesIO(image_source))
-    elif isinstance(image_source, str):
-        if image_source.startswith("file://"):
-            image_source = image_source[7:]
+    # Track intermediate images so we can close them (avoid leaking PIL memory).
+    # Never close the caller's image if it was passed as a PIL Image.
+    _images_to_close = []
 
-        if os.path.isfile(image_source):
-            # Local file path (PDFs are handled via PageLoader)
-            with open(image_source, "rb") as f:
-                image_data = f.read()
-            image = Image.open(io.BytesIO(image_data))
-        elif image_source.startswith("data:image/"):
-            # data:image/... URL
-            image_data = base64.b64decode(image_source.split(",")[1])
-            image = Image.open(io.BytesIO(image_data))
+    try:
+        # Handle different input types
+        if isinstance(image_source, Image.Image):
+            # Already a PIL Image — do NOT close it (caller owns it)
+            image = image_source
+        elif isinstance(image_source, bytes):
+            # Raw bytes
+            image = Image.open(io.BytesIO(image_source))
+            _images_to_close.append(image)
+        elif isinstance(image_source, str):
+            if image_source.startswith("file://"):
+                image_source = image_source[7:]
+
+            if os.path.isfile(image_source):
+                # Local file path (PDFs are handled via PageLoader)
+                with open(image_source, "rb") as f:
+                    image_data = f.read()
+                image = Image.open(io.BytesIO(image_data))
+                _images_to_close.append(image)
+            elif image_source.startswith("data:image/"):
+                # data:image/... URL
+                image_data = base64.b64decode(image_source.split(",")[1])
+                image = Image.open(io.BytesIO(image_data))
+                _images_to_close.append(image)
+            else:
+                # Raw base64 payload or <|base64|> blob
+                decoded = _try_decode_base64_to_image_bytes(image_source)
+                if decoded is None:
+                    raise ValueError(f"Invalid image source: {image_source}")
+                image = Image.open(io.BytesIO(decoded))
+                _images_to_close.append(image)
         else:
-            # Raw base64 payload or <|base64|> blob
-            decoded = _try_decode_base64_to_image_bytes(image_source)
-            if decoded is None:
-                raise ValueError(f"Invalid image source: {image_source}")
-            image = Image.open(io.BytesIO(decoded))
-    else:
-        raise TypeError(f"Unsupported image source type: {type(image_source)}")
+            raise TypeError(f"Unsupported image source type: {type(image_source)}")
 
-    # Convert to RGB
-    if image.mode != "RGB":
-        image = image.convert("RGB")
+        # Convert to RGB
+        if image.mode != "RGB":
+            converted = image.convert("RGB")
+            _images_to_close.append(converted)
+            image = converted
 
-    # Original size
-    w, h = image.size
+        # Original size
+        w, h = image.size
 
-    # Compute new size
-    h_bar, w_bar = smart_resize(
-        t=t_patch_size,
-        h=h,
-        w=w,
-        t_factor=t_patch_size,
-        h_factor=14 * 2 * patch_expand_factor,
-        w_factor=14 * 2 * patch_expand_factor,
-        min_pixels=min_pixels,
-        max_pixels=max_pixels,
-    )
+        # Compute new size
+        h_bar, w_bar = smart_resize(
+            t=t_patch_size,
+            h=h,
+            w=w,
+            t_factor=t_patch_size,
+            h_factor=14 * 2 * patch_expand_factor,
+            w_factor=14 * 2 * patch_expand_factor,
+            min_pixels=min_pixels,
+            max_pixels=max_pixels,
+        )
 
-    # Resize
-    image = image.resize((w_bar, h_bar), Image.Resampling.BICUBIC)
+        # Resize
+        resized = image.resize((w_bar, h_bar), Image.Resampling.BICUBIC)
+        _images_to_close.append(resized)
 
-    # Encode as bytes
-    buffered = io.BytesIO()
-    image.save(buffered, format=image_format)
-    buffered.seek(0)
-    image_data = buffered.getvalue()
+        # Encode as bytes
+        buffered = io.BytesIO()
+        resized.save(buffered, format=image_format)
+        image_data = buffered.getvalue()
+        buffered.close()
 
-    # Convert bytes to base64
-    base64_encoded_data = base64.b64encode(image_data)
-    image_base64 = base64_encoded_data.decode("utf-8")
+        # Convert bytes to base64
+        image_base64 = base64.b64encode(image_data).decode("utf-8")
 
-    return image_base64
+        return image_base64
+    finally:
+        for img in _images_to_close:
+            try:
+                img.close()
+            except Exception:
+                pass
 
 
 def crop_image_region(image, bbox_2d, polygon=None, fill_color=255):

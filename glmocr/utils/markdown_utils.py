@@ -105,6 +105,7 @@ def crop_and_embed_images_base64(
                                         buffer = io.BytesIO()
                                         cropped_image.save(buffer, format="JPEG", quality=95)
                                         b64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                                        buffer.close()
                                         new_tag = f"![Image {req_page}-{idx}](data:image/jpeg;base64,{b64_str})"
                                         result_markdown = result_markdown.replace(original_tag, new_tag, 1)
                                     except Exception as e:
@@ -141,6 +142,7 @@ def crop_and_embed_images_base64(
                                 buffer = io.BytesIO()
                                 cropped_image.save(buffer, format="JPEG", quality=95)
                                 b64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                                buffer.close()
                                 new_tag = f"![Image 0-{idx}](data:image/jpeg;base64,{b64_str})"
                                 result_markdown = result_markdown.replace(original_tag, new_tag, 1)
                             except Exception as e:

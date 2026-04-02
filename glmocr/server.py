@@ -126,47 +126,42 @@ def create_app(config: "GlmOcrConfig" = None) -> Flask:
             doc_config = app.config["doc_config"]
             server_config = doc_config.server
 
-            # Pipeline.process() yields one result per input unit; merge for single response
-            results = list(
-                pipeline.process(
-                    request_data,
-                    save_layout_visualization=False,
-                    layout_vis_output_dir=None,
-                )
-            )
+            # Pipeline.process() yields one result per input unit.
+            # Consume results one at a time to avoid holding all PipelineResults
+            # (with heavy base64 image data) in memory simultaneously.
+            json_results = []
+            markdown_results = []
+            for r in pipeline.process(
+                request_data,
+                save_layout_visualization=False,
+                layout_vis_output_dir=None,
+            ):
+                md = r.process_markdown()
+                json_results.append(r.json_result)
+                markdown_results.append(md or "")
+                # Let the heavy PipelineResult be GC'd
 
-            # Process results (update markdown with image base64)
-            for r in results:
-                # Always process markdown to include image base64 if images are available
-                # This ensures the user gets markdown with base64 embedded images
-                r.markdown_result = r.process_markdown()
-
-            if not results:
+            if not json_results:
                 return (
                     jsonify({"json_result": None, "markdown_result": ""}),
                     200,
                 )
-            if len(results) == 1:
-                r = results[0]
+            if len(json_results) == 1:
                 return (
                     jsonify(
                         {
-                            "json_result": r.json_result,
-                            "markdown_result": r.markdown_result or "",
+                            "json_result": json_results[0],
+                            "markdown_result": markdown_results[0],
                         }
                     ),
                     200,
                 )
             # Multiple units: merge json as list, markdown with separator
-            json_result = [r.json_result for r in results]
-            markdown_result = "\n\n---\n\n".join(
-                r.markdown_result or "" for r in results
-            )
             return (
                 jsonify(
                     {
-                        "json_result": json_result,
-                        "markdown_result": markdown_result,
+                        "json_result": json_results,
+                        "markdown_result": "\n\n---\n\n".join(markdown_results),
                     }
                 ),
                 200,
