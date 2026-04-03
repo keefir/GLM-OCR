@@ -369,6 +369,7 @@ def pdf_to_images_pil_iter(
                 image, _ = _render_page_to_pil(
                     page, dpi=dpi, max_width_or_height=max_width_or_height
                 )
+                del page
                 yield image
             except Exception as e:
                 logger.warning(

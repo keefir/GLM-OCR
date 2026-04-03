@@ -15,6 +15,7 @@ Extension points:
 
 from __future__ import annotations
 
+import gc
 import time
 import threading
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional
@@ -190,6 +191,12 @@ class Pipeline:
             t3.join(timeout=10)
             t_watchdog.join(timeout=5)
             self._current_state = None
+            gc.collect()
+            try:
+                import ctypes
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
+            except Exception:
+                pass
 
         state.raise_if_exceptions()
 

@@ -95,7 +95,11 @@ class PipelineState:
         """Drain all items from *q* to unblock any blocked producers."""
         while True:
             try:
-                q.get_nowait()
+                msg = q.get_nowait()
+                for key in ("image", "cropped_image"):
+                    img = msg.get(key) if isinstance(msg, dict) else None
+                    if img is not None and hasattr(img, "close"):
+                        img.close()
             except queue.Empty:
                 break
 
