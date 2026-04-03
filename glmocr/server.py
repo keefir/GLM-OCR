@@ -230,11 +230,25 @@ def main():
         logger.info("=" * 60)
         logger.info("")
 
-        app.run(
-            debug=server_config.debug,
-            host=server_config.host,
-            port=server_config.port,
-        )
+        if not server_config.debug:
+            try:
+                import waitress
+                logger.info("Using Waitress WSGI server.")
+                waitress.serve(app, host=server_config.host, port=server_config.port)
+            except ImportError:
+                logger.warning("Waitress not found. Falling back to Flask dev server. For production, install waitress: pip install waitress")
+                app.run(
+                    debug=server_config.debug,
+                    host=server_config.host,
+                    port=server_config.port,
+                )
+        else:
+            logger.info("Running Flask in debug mode.")
+            app.run(
+                debug=server_config.debug,
+                host=server_config.host,
+                port=server_config.port,
+            )
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")
