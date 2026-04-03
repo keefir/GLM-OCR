@@ -93,7 +93,6 @@ def data_loading_worker(
                 sent_unit_done.add(prev_unit_idx)
 
             state.register_page(page_idx, unit_idx)
-            state.images_dict[page_idx] = page
             if not state.safe_put(
                 state.page_queue,
                 {
@@ -197,8 +196,6 @@ def layout_worker(
                         use_polygon=use_polygon,
                     )
                     global_start_idx += len(batch_page_indices)
-                    for pi in batch_page_indices:
-                        state.images_dict.pop(pi, None)
                     batch_images, batch_page_indices, batch_unit_indices = [], [], []
 
             elif identifier == IDENTIFIER_UNIT_DONE:
@@ -214,8 +211,6 @@ def layout_worker(
                         use_polygon=use_polygon,
                     )
                     global_start_idx += len(batch_page_indices)
-                    for pi in batch_page_indices:
-                        state.images_dict.pop(pi, None)
                     batch_images, batch_page_indices, batch_unit_indices = [], [], []
 
                 pages_for_unit = unit_page_indices.get(unit_idx, [])

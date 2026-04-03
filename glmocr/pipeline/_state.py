@@ -36,8 +36,6 @@ class PipelineState:
             maxsize=region_maxsize
         )
 
-        # ── Per-page data (stage 1 & 2 write, main thread reads) ─────
-        self.images_dict: Dict[int, Any] = {}
         self.layout_results_dict: Dict[int, List] = {}
 
         # ── Counters (stage 1 writes, main thread reads after join) ──

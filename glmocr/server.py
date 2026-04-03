@@ -68,36 +68,69 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                 "markdown_result": "..."
             }
         """
-        # Validate Content-Type
-        if request.headers.get("Content-Type") != "application/json":
+        # Try to parse the return_base64 flag
+        return_base64 = False
+
+        if request.mimetype.startswith("multipart/form-data"):
+            # Form field URLs
+            images = request.form.getlist("images")
+            if isinstance(images, str):
+                images = [images]
+            
+            # Form field flag
+            return_base64_str = request.form.get("return_base64", "false").lower()
+            return_base64 = return_base64_str == "true" or return_base64_str == "1"
+
+            messages = [{"role": "user", "content": []}]
+            for image_url in images:
+                if image_url.strip():
+                    messages[0]["content"].append(
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    )
+
+            # Files attached
+            for file_key in request.files:
+                for file_obj in request.files.getlist(file_key):
+                    if file_obj.filename:
+                        file_bytes = file_obj.read()
+                        if file_bytes:
+                            messages[0]["content"].append({"type": "image_bytes", "data": file_bytes})
+                            
+            if not messages[0]["content"]:
+                return jsonify({"error": "No images provided in form or files"}), 400
+
+            request_data = {"messages": messages}
+
+        elif request.mimetype == "application/json":
+            try:
+                data = request.json
+            except Exception:
+                return jsonify({"error": "Invalid JSON payload"}), 400
+
+            images = data.get("images", [])
+            if isinstance(images, str):
+                images = [images]
+
+            if not images:
+                return jsonify({"error": "No images provided"}), 400
+
+            return_base64 = data.get("return_base64", False)
+
+            messages = [{"role": "user", "content": []}]
+            for image_url in images:
+                messages[0]["content"].append(
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                )
+
+            request_data = {"messages": messages}
+            
+        else:
             return (
                 jsonify(
-                    {"error": "Invalid Content-Type. Expected 'application/json'."}
+                    {"error": "Invalid Content-Type. Expected 'application/json' or 'multipart/form-data'."}
                 ),
                 400,
             )
-
-        # Parse JSON payload
-        try:
-            data = request.json
-        except Exception:
-            return jsonify({"error": "Invalid JSON payload"}), 400
-
-        images = data.get("images", [])
-        if isinstance(images, str):
-            images = [images]
-
-        if not images:
-            return jsonify({"error": "No images provided"}), 400
-
-        # Build pipeline request
-        messages = [{"role": "user", "content": []}]
-        for image_url in images:
-            messages[0]["content"].append(
-                {"type": "image_url", "image_url": {"url": image_url}}
-            )
-
-        request_data = {"messages": messages}
 
         try:
             # Pipeline.process() yields one result per input unit; merge for single response
@@ -105,6 +138,7 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                 pipeline.process(
                     request_data,
                     save_layout_visualization=False,
+                    return_base64=return_base64,
                 )
             )
             if not results:

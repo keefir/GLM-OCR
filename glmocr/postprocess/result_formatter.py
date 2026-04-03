@@ -145,6 +145,7 @@ class ResultFormatter(BasePostProcessor):
         grouped_results: List[List[Dict]],
         cropped_images: Dict[tuple, Any] | None = None,
         image_prefix: str = "cropped",
+        return_base64: bool = False,
     ) -> Tuple[str, str, Dict[str, Any]]:
         """Process grouped results in layout mode.
 
@@ -155,6 +156,8 @@ class ResultFormatter(BasePostProcessor):
                 are resolved to final file paths directly in the markdown
                 and JSON output.
             image_prefix: Filename prefix for saved images.
+            return_base64: If True, attach images as base64 strings instead
+                of using relative local paths.
 
         Returns:
             (json_str, markdown_str, image_files) where *image_files* maps
@@ -231,16 +234,31 @@ class ResultFormatter(BasePostProcessor):
                             cropped_images.get(key) if cropped_images and key else None
                         )
                         if img is not None:
-                            filename = (
-                                f"{image_prefix}_page{page_idx}_idx{image_counter}.jpg"
-                            )
-                            rel_path = f"imgs/{filename}"
-                            image_files[filename] = img
-                            result["image_path"] = rel_path
-                            markdown_page_results.append(
-                                f"![Image {page_idx}-{image_counter}]({rel_path})"
-                            )
-                            image_counter += 1
+                            if return_base64:
+                                import base64
+                                import io
+                                
+                                buffered = io.BytesIO()
+                                img.save(buffered, format="JPEG")
+                                img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                                b64_img = f"data:image/jpeg;base64,{img_str}"
+                                
+                                result["image_base64"] = b64_img
+                                markdown_page_results.append(
+                                    f"![Image {page_idx}-{image_counter}]({b64_img})"
+                                )
+                                image_counter += 1
+                            else:
+                                filename = (
+                                    f"{image_prefix}_page{page_idx}_idx{image_counter}.jpg"
+                                )
+                                rel_path = f"imgs/{filename}"
+                                image_files[filename] = img
+                                result["image_path"] = rel_path
+                                markdown_page_results.append(
+                                    f"![Image {page_idx}-{image_counter}]({rel_path})"
+                                )
+                                image_counter += 1
                     elif content:
                         markdown_page_results.append(content)
                 markdown_final_results.append("\n\n".join(markdown_page_results))

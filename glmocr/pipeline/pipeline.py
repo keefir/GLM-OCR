@@ -112,6 +112,7 @@ class Pipeline:
         page_maxsize: Optional[int] = None,
         region_maxsize: Optional[int] = None,
         preserve_order: bool = True,
+        return_base64: bool = False,
     ) -> Generator[PipelineResult, None, None]:
         """Process a request; yield one ``PipelineResult`` per input unit.
 
@@ -180,7 +181,7 @@ class Pipeline:
 
         try:
             yield from self._emit_results(
-                state, tracker, original_inputs, preserve_order=preserve_order
+                state, tracker, original_inputs, preserve_order=preserve_order, return_base64=return_base64
             )
         finally:
             state.request_shutdown()
@@ -311,6 +312,7 @@ class Pipeline:
         tracker: UnitTracker,
         original_inputs: List[str],
         preserve_order: bool = True,
+        return_base64: bool = False,
     ) -> Generator[PipelineResult, None, None]:
         """Wait for units to complete and yield formatted results.
 
@@ -361,6 +363,7 @@ class Pipeline:
             json_u, md_u, image_files = self.result_formatter.process(
                 grouped,
                 cropped_images=cropped_images or None,
+                return_base64=return_base64,
             )
 
             vis_images = {}

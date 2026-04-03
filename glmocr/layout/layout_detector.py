@@ -284,14 +284,15 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             raise RuntimeError("Layout detector not started. Call start() first.")
 
         num_images = len(images)
-        pil_images = [
-            img.convert("RGB") if img.mode != "RGB" else img for img in images
-        ]
-        all_paddle_format_results = []
+        all_results = []
+        vis_images: Dict[int, Image.Image] = {}
 
         for chunk_start in range(0, num_images, self.batch_size):
             chunk_end = min(chunk_start + self.batch_size, num_images)
-            chunk_pil = pil_images[chunk_start:chunk_end]
+            chunk_images = images[chunk_start:chunk_end]
+            chunk_pil = [
+                img.convert("RGB") if img.mode != "RGB" else img for img in chunk_images
+            ]
 
             inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
             inputs = {k: v.to(self._device) for k, v in inputs.items()}
@@ -326,65 +327,67 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                 layout_unclip_ratio=self.layout_unclip_ratio,
                 layout_merge_bboxes_mode=self.layout_merge_bboxes_mode,
             )
-            all_paddle_format_results.extend(paddle_format_results)
 
-            if self._device.startswith("cuda") and chunk_end < num_images:
+            if save_visualization:
+                for idx_in_chunk, img_results in enumerate(paddle_format_results):
+                    vis_img = np.array(chunk_pil[idx_in_chunk])
+                    global_idx = global_start_idx + chunk_start + idx_in_chunk
+                    vis_images[global_idx] = draw_layout_boxes(
+                        image=vis_img,
+                        boxes=img_results,
+                        use_polygon=use_polygon,
+                    )
+
+            for idx_in_chunk, paddle_results in enumerate(paddle_format_results):
+                image_width, image_height = chunk_pil[idx_in_chunk].size
+                results = []
+                valid_index = 0
+                for item in paddle_results:
+                    label = item["label"]
+                    score = item["score"]
+                    box = item["coordinate"]
+                    task_type = None
+                    for task_item, labels in self.label_task_mapping.items():
+                        if isinstance(labels, list) and label in labels:
+                            task_type = task_item
+                            break
+                    if task_type is None or task_type == "abandon":
+                        continue
+                    x1, y1, x2, y2 = box
+                    x1_norm = int(float(x1) / image_width * 1000)
+                    y1_norm = int(float(y1) / image_height * 1000)
+                    x2_norm = int(float(x2) / image_width * 1000)
+                    y2_norm = int(float(y2) / image_height * 1000)
+
+                    # Convert polygon_points to normalized list format
+                    poly_array = item["polygon_points"]
+                    polygon = [
+                        [
+                            int(float(point[0]) / image_width * 1000),
+                            int(float(point[1]) / image_height * 1000),
+                        ]
+                        for point in poly_array
+                    ]
+
+                    results.append(
+                        {
+                            "index": valid_index,
+                            "label": label,
+                            "score": float(score),
+                            "bbox_2d": [x1_norm, y1_norm, x2_norm, y2_norm],
+                            "polygon": polygon,
+                            "task_type": task_type,
+                        }
+                    )
+                    valid_index += 1
+                all_results.append(results)
+
+            if self._device.startswith("cuda"):
                 del inputs, outputs, raw_results
                 torch.cuda.empty_cache()
 
-        vis_images: Dict[int, Image.Image] = {}
-        if save_visualization:
-            for img_idx, img_results in enumerate(all_paddle_format_results):
-                vis_img = np.array(pil_images[img_idx])
-                vis_images[global_start_idx + img_idx] = draw_layout_boxes(
-                    image=vis_img,
-                    boxes=img_results,
-                    use_polygon=use_polygon,
-                )
-
-        all_results = []
-        for img_idx, paddle_results in enumerate(all_paddle_format_results):
-            image_width, image_height = pil_images[img_idx].size
-            results = []
-            valid_index = 0
-            for item in paddle_results:
-                label = item["label"]
-                score = item["score"]
-                box = item["coordinate"]
-                task_type = None
-                for task_item, labels in self.label_task_mapping.items():
-                    if isinstance(labels, list) and label in labels:
-                        task_type = task_item
-                        break
-                if task_type is None or task_type == "abandon":
-                    continue
-                x1, y1, x2, y2 = box
-                x1_norm = int(float(x1) / image_width * 1000)
-                y1_norm = int(float(y1) / image_height * 1000)
-                x2_norm = int(float(x2) / image_width * 1000)
-                y2_norm = int(float(y2) / image_height * 1000)
-
-                # Convert polygon_points to normalized list format
-                poly_array = item["polygon_points"]
-                polygon = [
-                    [
-                        int(float(point[0]) / image_width * 1000),
-                        int(float(point[1]) / image_height * 1000),
-                    ]
-                    for point in poly_array
-                ]
-
-                results.append(
-                    {
-                        "index": valid_index,
-                        "label": label,
-                        "score": float(score),
-                        "bbox_2d": [x1_norm, y1_norm, x2_norm, y2_norm],
-                        "polygon": polygon,
-                        "task_type": task_type,
-                    }
-                )
-                valid_index += 1
-            all_results.append(results)
+            del chunk_pil
+            del chunk_images
 
         return all_results, vis_images
+
