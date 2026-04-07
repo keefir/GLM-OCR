@@ -40,8 +40,7 @@ def create_app(config: "GlmOcrConfig") -> Flask:
     """
     if Flask is None:
         raise ImportError(
-            "Flask server support requires the optional server extra. "
-            "Install with: pip install 'glmocr[server]'"
+            "Flask server support requires the optional server extra. " "Install with: pip install 'glmocr[server]'"
         ) from _FLASK_IMPORT_ERROR
 
     app = Flask(__name__)
@@ -76,7 +75,7 @@ def create_app(config: "GlmOcrConfig") -> Flask:
             images = request.form.getlist("images")
             if isinstance(images, str):
                 images = [images]
-            
+
             # Form field flag
             return_base64_str = request.form.get("return_base64", "false").lower()
             return_base64 = return_base64_str == "true" or return_base64_str == "1"
@@ -84,9 +83,7 @@ def create_app(config: "GlmOcrConfig") -> Flask:
             messages = [{"role": "user", "content": []}]
             for image_url in images:
                 if image_url.strip():
-                    messages[0]["content"].append(
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    )
+                    messages[0]["content"].append({"type": "image_url", "image_url": {"url": image_url}})
 
             # Files attached
             for file_key in request.files:
@@ -95,7 +92,7 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                         file_bytes = file_obj.read()
                         if file_bytes:
                             messages[0]["content"].append({"type": "image_bytes", "data": file_bytes})
-                            
+
             if not messages[0]["content"]:
                 return jsonify({"error": "No images provided in form or files"}), 400
 
@@ -118,17 +115,13 @@ def create_app(config: "GlmOcrConfig") -> Flask:
 
             messages = [{"role": "user", "content": []}]
             for image_url in images:
-                messages[0]["content"].append(
-                    {"type": "image_url", "image_url": {"url": image_url}}
-                )
+                messages[0]["content"].append({"type": "image_url", "image_url": {"url": image_url}})
 
             request_data = {"messages": messages}
-            
+
         else:
             return (
-                jsonify(
-                    {"error": "Invalid Content-Type. Expected 'application/json' or 'multipart/form-data'."}
-                ),
+                jsonify({"error": "Invalid Content-Type. Expected 'application/json' or 'multipart/form-data'."}),
                 400,
             )
 
@@ -159,9 +152,7 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                 )
             # Multiple units: merge json as list, markdown with separator
             json_result = [r.json_result for r in results]
-            markdown_result = "\n\n---\n\n".join(
-                r.markdown_result or "" for r in results
-            )
+            markdown_result = "\n\n---\n\n".join(r.markdown_result or "" for r in results)
             return (
                 jsonify(
                     {
@@ -223,9 +214,7 @@ def main():
         server_config = config.server
         logger.info("")
         logger.info("=" * 60)
-        logger.info(
-            "GlmOcr Server starting on %s:%d...", server_config.host, server_config.port
-        )
+        logger.info("GlmOcr Server starting on %s:%d...", server_config.host, server_config.port)
         logger.info("API endpoint: /glmocr/parse")
         logger.info("=" * 60)
         logger.info("")
@@ -233,10 +222,13 @@ def main():
         if not server_config.debug:
             try:
                 import waitress
+
                 logger.info("Using Waitress WSGI server.")
                 waitress.serve(app, host=server_config.host, port=server_config.port)
             except ImportError:
-                logger.warning("Waitress not found. Falling back to Flask dev server. For production, install waitress: pip install waitress")
+                logger.warning(
+                    "Waitress not found. Falling back to Flask dev server. For production, install waitress: pip install waitress"
+                )
                 app.run(
                     debug=server_config.debug,
                     host=server_config.host,

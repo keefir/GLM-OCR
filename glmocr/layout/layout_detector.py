@@ -60,9 +60,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
         """Load model and processor once in the main process."""
         logger.debug("Initializing PP-DocLayoutV3...")
 
-        self._image_processor = PPDocLayoutV3ImageProcessorFast.from_pretrained(
-            self.model_dir
-        )
+        self._image_processor = PPDocLayoutV3ImageProcessorFast.from_pretrained(self.model_dir)
         self._model = PPDocLayoutV3ForObjectDetection.from_pretrained(self.model_dir)
         self._model.eval()
 
@@ -81,7 +79,13 @@ class PPDocLayoutDetector(BaseLayoutDetector):
 
         # Patch upstream _extract_polygon_points_by_masks to guard against
         # empty mask crops that crash cv2.resize with !ssize.empty().
-        def _safe_extract(boxes, masks, scale_ratio):
+        #
+        # NOTE: _safe_extract captures only the bound method _mask2polygon_fn
+        # (not ``self``) to avoid creating a reference cycle:
+        #   self → _image_processor → _extract_polygon_points_by_masks → self
+        _mask2polygon_fn = self._image_processor._mask2polygon
+
+        def _safe_extract(boxes, masks, scale_ratio, _m2p=_mask2polygon_fn):
             scale_w, scale_h = scale_ratio[0] / 4, scale_ratio[1] / 4
             mask_h, mask_w = masks.shape[1:]
             polygon_points = []
@@ -115,7 +119,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                     (box_w, box_h),
                     interpolation=cv2.INTER_NEAREST,
                 )
-                polygon = self._image_processor._mask2polygon(resized)
+                polygon = _m2p(resized)
                 if polygon is not None and len(polygon) < 4:
                     polygon_points.append(rect)
                     continue
@@ -131,10 +135,15 @@ class PPDocLayoutDetector(BaseLayoutDetector):
     def stop(self):
         """Unload model and processor."""
         if self._model is not None:
-            if self._device.startswith("cuda"):
+            if self._device is not None and self._device.startswith("cuda"):
                 torch.cuda.empty_cache()
             self._model = None
-        self._image_processor = None
+        # Remove monkey-patched method to break the reference cycle
+        # (image_processor → _extract_polygon_points_by_masks → _mask2polygon_fn).
+        if self._image_processor is not None:
+            if hasattr(self._image_processor, "_extract_polygon_points_by_masks"):
+                del self._image_processor._extract_polygon_points_by_masks
+            self._image_processor = None
         self._device = None
         logger.debug("PP-DocLayoutV3 stopped.")
 
@@ -195,9 +204,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                 new_result["order_seq"] = result["order_seq"][keep]
             if "polygon_points" in result:
                 keep_list = keep.tolist()
-                new_result["polygon_points"] = [
-                    p for p, k in zip(result["polygon_points"], keep_list) if k
-                ]
+                new_result["polygon_points"] = [p for p, k in zip(result["polygon_points"], keep_list) if k]
             filtered.append(new_result)
         return filtered
 
@@ -210,9 +217,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             "order_seq": torch.tensor([], dtype=torch.long, device=self._device),
         }
 
-    def _run_detection_single_image(
-        self, image: Image.Image, pre_threshold: float
-    ) -> Dict:
+    def _run_detection_single_image(self, image: Image.Image, pre_threshold: float) -> Dict:
         """Run model + post_process for a single image. Raises on error."""
         single_inputs = self._image_processor(images=[image], return_tensors="pt")
         single_inputs = {k: v.to(self._device) for k, v in single_inputs.items()}
@@ -290,9 +295,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
         for chunk_start in range(0, num_images, self.batch_size):
             chunk_end = min(chunk_start + self.batch_size, num_images)
             chunk_images = images[chunk_start:chunk_end]
-            chunk_pil = [
-                img.convert("RGB") if img.mode != "RGB" else img for img in chunk_images
-            ]
+            chunk_pil = [img.convert("RGB") if img.mode != "RGB" else img for img in chunk_images]
 
             inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
             inputs = {k: v.to(self._device) for k, v in inputs.items()}
@@ -300,15 +303,11 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             with torch.no_grad():
                 outputs = self._model(**inputs)
 
-            target_sizes = torch.tensor(
-                [img.size[::-1] for img in chunk_pil], device=self._device
-            )
+            target_sizes = torch.tensor([img.size[::-1] for img in chunk_pil], device=self._device)
             if self.threshold_by_class:
                 # Use the lowest threshold (per-class or global fallback)
                 # so post-processing doesn't discard valid detections early.
-                pre_threshold = min(
-                    self.threshold, min(self.threshold_by_class.values())
-                )
+                pre_threshold = min(self.threshold, min(self.threshold_by_class.values()))
             else:
                 pre_threshold = self.threshold
 
@@ -382,12 +381,31 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                     valid_index += 1
                 all_results.append(results)
 
-            if self._device.startswith("cuda"):
-                del inputs, outputs, raw_results
-                torch.cuda.empty_cache()
+                # Explicitly release heavy intermediates regardless of device.
+                # Previously this block was CUDA-only, which meant that on CPU
+                # the large tensors (inputs, outputs, raw_results) were kept
+                # alive until the next loop iteration or method return.
+                # del inputs, outputs, target_sizes, raw_results, paddle_format_results
+
+                # if self._device.startswith("cuda"):
+                #     torch.cuda.empty_cache()
+                # else:
+                #     # On CPU, PyTorch's allocator may cache freed tensor memory
+                #     # in its internal pool instead of returning it to the OS.
+                #     # Force-release via malloc_trim + optional PyTorch CPU pool clear.
+                #     import ctypes
+
+                #     try:
+                #         ctypes.CDLL("libc.so.6").malloc_trim(0)
+                #     except Exception:
+                #         pass
+                #     # Clear PyTorch's internal CPU caching allocator if available.
+                # try:
+                # torch._C._cpu_clearMemoryPool()
+                # except AttributeError:
+                #     pass
 
             del chunk_pil
             del chunk_images
 
         return all_results, vis_images
-

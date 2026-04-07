@@ -60,8 +60,8 @@ pipeline:
   # OCR API client configuration (for self-hosted vLLM/SGLang/Ollama)
   ocr_api:
     # Basic connection
-    api_host: 127.0.0.1
-    api_port: 8080
+    api_host: 10.1.5.233
+    api_port: 8020
 
     # Model name included in API requests.
     # Required for mlx_vlm.server (e.g. "mlx-community/GLM-OCR-bf16").
@@ -177,7 +177,7 @@ pipeline:
     # PP-DocLayoutV3 model directory
     # Can be a local folder or a Hugging Face model id
     # (Use *_safetensors for Transformers; PaddlePaddle/PP-DocLayoutV3 is a PaddleOCR export)
-    model_dir: /workspace/ocr_document_data_cloud/ckpt/opensource/PP-DocLayoutV3_safetensors
+    model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
 
     # Detection threshold
     threshold: 0.3

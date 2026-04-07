@@ -360,6 +360,7 @@ def recognition_worker(
                         msg["cropped_image"],
                         msg["region"]["task_type"],
                     )
+                    msg["cropped_image"].close()
                     del msg["cropped_image"]
                     future = executor.submit(ocr_client.process, req)
                     futures[future] = msg

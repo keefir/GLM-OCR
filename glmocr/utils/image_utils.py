@@ -171,12 +171,8 @@ def load_image_to_base64(
     # Encode as bytes
     buffered = io.BytesIO()
     image.save(buffered, format=image_format)
-    buffered.seek(0)
-    image_data = buffered.getvalue()
-
-    # Convert bytes to base64
-    base64_encoded_data = base64.b64encode(image_data)
-    image_base64 = base64_encoded_data.decode("utf-8")
+    image_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    buffered.close()
 
     return image_base64
 

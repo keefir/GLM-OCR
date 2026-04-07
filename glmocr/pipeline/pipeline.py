@@ -15,6 +15,7 @@ Extension points:
 
 from __future__ import annotations
 
+import gc
 import time
 import threading
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional
@@ -79,9 +80,7 @@ class Pipeline:
         self.page_loader = PageLoader(config.page_loader)
         self.ocr_client = OCRClient(config.ocr_api)
         self.result_formatter = (
-            result_formatter
-            if result_formatter is not None
-            else ResultFormatter(config.result_formatter)
+            result_formatter if result_formatter is not None else ResultFormatter(config.result_formatter)
         )
 
         if layout_detector is not None:
@@ -190,6 +189,12 @@ class Pipeline:
             t3.join(timeout=10)
             t_watchdog.join(timeout=5)
             self._current_state = None
+            # gc.collect()
+            # try:
+            #     import ctypes
+            #     ctypes.CDLL("libc.so.6").malloc_trim(0)
+            # except Exception:
+            #     pass
 
         state.raise_if_exceptions()
 
@@ -252,8 +257,7 @@ class Pipeline:
 
             if not self.ocr_client.is_alive():
                 error = RuntimeError(
-                    f"OCR service at {self.ocr_client.api_host}:{self.ocr_client.api_port} "
-                    f"is no longer available"
+                    f"OCR service at {self.ocr_client.api_host}:{self.ocr_client.api_port} " f"is no longer available"
                 )
                 logger.error("%s", error)
                 state.record_exception("HealthWatchdog", error)
@@ -295,9 +299,7 @@ class Pipeline:
         request_data = self.page_loader.build_request(request_data)
         response, status_code = self.ocr_client.process(request_data)
         if status_code != 200:
-            raise Exception(
-                f"OCR request failed: {response}, status_code: {status_code}"
-            )
+            raise Exception(f"OCR request failed: {response}, status_code: {status_code}")
         content = extract_ocr_content(response)
         json_result, markdown_result = self.result_formatter.format_ocr_result(content)
         return PipelineResult(
@@ -327,9 +329,7 @@ class Pipeline:
         next_to_emit = 0
         num_units = tracker.num_units
 
-        while (
-            (next_to_emit < num_units) if preserve_order else (len(built) < num_units)
-        ):
+        while (next_to_emit < num_units) if preserve_order else (len(built) < num_units):
             if preserve_order:
                 while next_to_emit in pending:
                     yield pending.pop(next_to_emit)
