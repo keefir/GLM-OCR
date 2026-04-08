@@ -1,0 +1,19 @@
+services:
+  glmocr-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # image: glmocr-server:latest
+    container_name: glmocr-server
+    ports:
+      - "5002:5002"
+    volumes:
+      # Optional: mount local configuration to override defaults
+      - ./glmocr/config.yaml:/app/glmocr/config.yaml
+      
+      # Optional: mount local repository for hot-reloading development
+      # - .:/app
+      
+      # Where outputs/temp files might be written, you can persist them if needed
+      # - ./output:/app/output
+    restart: unless-stopped

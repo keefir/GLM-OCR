@@ -4,6 +4,7 @@ import os
 import sys
 import traceback
 import multiprocessing
+import gc
 from typing import TYPE_CHECKING
 
 try:
@@ -73,29 +74,43 @@ def create_app(config: "GlmOcrConfig") -> Flask:
 
         if request.mimetype.startswith("multipart/form-data"):
             # Form field URLs
-            images = request.form.getlist("images")
+            images = list(request.form.getlist("images"))
             if isinstance(images, str):
                 images = [images]
             
             # Form field flag
-            return_base64_str = request.form.get("return_base64", "false").lower()
+            return_base64_str = request.form.get("return_base64", "true").lower()
             return_base64 = return_base64_str == "true" or return_base64_str == "1"
 
             messages = [{"role": "user", "content": []}]
-            for image_url in images:
-                if image_url.strip():
-                    messages[0]["content"].append(
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    )
-
+            
             # Files attached
             for file_key in request.files:
                 for file_obj in request.files.getlist(file_key):
                     if file_obj.filename:
                         file_bytes = file_obj.read()
                         if file_bytes:
-                            messages[0]["content"].append({"type": "image_bytes", "data": file_bytes})
-                            
+                            if file_obj.filename.lower().endswith(".pdf"):
+                                import tempfile
+                                from glmocr.utils.image_utils import pdf_to_images_pil_iter
+                                temp_dir = tempfile.mkdtemp()
+                                try:
+                                    for idx, img in enumerate(pdf_to_images_pil_iter(file_bytes)):
+                                        img_path = os.path.join(temp_dir, f"page_{idx}.png")
+                                        img.save(img_path, format="PNG")
+                                        images.append(img_path)
+                                        img.close()
+                                except Exception as e:
+                                    logger.error("Error converting PDF %s to images: %s", file_obj.filename, e)
+                            else:
+                                messages[0]["content"].append({"type": "image_bytes", "data": file_bytes})
+
+            for image_url in images:
+                if isinstance(image_url, str) and image_url.strip():
+                    messages[0]["content"].append(
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    )
+
             if not messages[0]["content"]:
                 return jsonify({"error": "No images provided in form or files"}), 400
 
@@ -114,13 +129,34 @@ def create_app(config: "GlmOcrConfig") -> Flask:
             if not images:
                 return jsonify({"error": "No images provided"}), 400
 
-            return_base64 = data.get("return_base64", False)
+            return_base64 = data.get("return_base64", True)
+
+            import tempfile
+            from glmocr.utils.image_utils import pdf_to_images_pil_iter
+            
+            expanded_images = []
+            for img_src in images:
+                if isinstance(img_src, str) and img_src.lower().endswith(".pdf") and os.path.isfile(img_src):
+                    temp_dir = tempfile.mkdtemp()
+                    try:
+                        for idx, img in enumerate(pdf_to_images_pil_iter(img_src)):
+                            img_path = os.path.join(temp_dir, f"page_{idx}.png")
+                            img.save(img_path, format="PNG")
+                            expanded_images.append(img_path)
+                            img.close()
+                    except Exception as e:
+                        logger.error("Error converting PDF %s to images: %s", img_src, e)
+                        expanded_images.append(img_src)
+                else:
+                    expanded_images.append(img_src)
+            images = expanded_images
 
             messages = [{"role": "user", "content": []}]
             for image_url in images:
-                messages[0]["content"].append(
-                    {"type": "image_url", "image_url": {"url": image_url}}
-                )
+                if isinstance(image_url, str) and image_url.strip():
+                    messages[0]["content"].append(
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    )
 
             request_data = {"messages": messages}
             
@@ -176,6 +212,9 @@ def create_app(config: "GlmOcrConfig") -> Flask:
             logger.error("Parse error: %s", e)
             logger.debug(traceback.format_exc())
             return jsonify({"error": f"Parse error: {str(e)}"}), 500
+        
+        finally:
+            gc.collect()
 
     @app.route("/health", methods=["GET"])
     def health():
