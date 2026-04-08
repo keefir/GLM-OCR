@@ -17,3 +17,20 @@ services:
       # Where outputs/temp files might be written, you can persist them if needed
       # - ./output:/app/output
     restart: unless-stopped
+  ocr-model:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    ports:
+      - "8020:8020"
+    restart: always
+    volumes:
+      - type: bind
+        source: /home/eme/models
+        target: /models
+    command: ["-m", "/models/GLM-OCR-Q8_0.gguf", "--mmproj", "/models/mmproj-GLM-OCR-Q8_0.gguf", "-c", "4000", "--host", "0.0.0.0", "--port", "8020", "--n-gpu-layers", "99", "--parallel", "1", "--timeout", "1800", "-lv", "0"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["3"]
+              capabilities: ["gpu"]
